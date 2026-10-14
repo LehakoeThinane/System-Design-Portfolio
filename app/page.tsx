@@ -5,6 +5,7 @@ const personJsonLd = {
   "@type": "Person",
   name: "Lehakoe Thinane",
   jobTitle: "Systems Designer & Architect",
+  url: "https://leonard-thinane.vercel.app",
   description:
     "Systems designer, architect and AI engineer with ten years of shipping web and business systems, focused on AI that stays inside controlled boundaries.",
   email: "mailto:lehakoe.thinane@gmail.com",

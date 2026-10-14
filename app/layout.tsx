@@ -13,6 +13,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://leonard-thinane.vercel.app"),
+  alternates: { canonical: "/" },
   title: "Lehakoe Thinane - Systems Designer & Architect",
   description:
     "Systems designer, architect and AI engineer focused on controlled AI, ERP, automation and business systems.",
@@ -34,6 +36,7 @@ export const metadata: Metadata = {
     description:
       "Portfolio for Lehakoe Thinane, systems designer and architect building AI inside controlled boundaries.",
     type: "website",
+    url: "/",
   },
 };
 
