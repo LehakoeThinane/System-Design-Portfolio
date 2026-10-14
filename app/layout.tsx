@@ -16,6 +16,19 @@ export const metadata: Metadata = {
   title: "Lehakoe Thinane - Systems Designer & Architect",
   description:
     "Systems designer, architect and AI engineer focused on controlled AI, ERP, automation and business systems.",
+  authors: [{ name: "Lehakoe Thinane" }],
+  keywords: [
+    "systems architect",
+    "solutions architect",
+    "AI engineer",
+    "LLM guardrails",
+    "multi-tenant ERP",
+    "business automation",
+    "FastAPI",
+    ".NET",
+    "Johannesburg",
+    "South Africa",
+  ],
   openGraph: {
     title: "Lehakoe Thinane - Systems Designer & Architect",
     description:
