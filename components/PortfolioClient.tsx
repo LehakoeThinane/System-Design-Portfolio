@@ -241,6 +241,9 @@ const sideProjects: {
   },
 ];
 
+const cvHref = "/cv/Lehakoe_Thinane_CV.pdf";
+const cvFileName = "Lehakoe_Thinane_CV_Systems_Designer_Architect_AI_Engineer.pdf";
+
 const stackFile = [
   { key: "languages", values: ["Python", "TypeScript", "C#", "PHP"] },
   { key: "backend", values: ["FastAPI", ".NET 10", "EF Core", "Django REST", "Fastify", "Celery"] },
@@ -432,9 +435,9 @@ export default function PortfolioClient() {
             ))}
           </nav>
           <div className="flex items-center gap-2">
-            <button type="button" className="btn-primary focus-ring hidden py-2 sm:inline-flex" onClick={() => window.print()}>
+            <a className="btn-primary focus-ring hidden py-2 sm:inline-flex" href={cvHref} download={cvFileName}>
               Download CV
-            </button>
+            </a>
             <button
               type="button"
               aria-expanded={menuOpen}
@@ -454,9 +457,9 @@ export default function PortfolioClient() {
                   {item.label}
                 </a>
               ))}
-              <button type="button" className="btn-primary focus-ring mt-2 sm:hidden" onClick={() => window.print()}>
+              <a className="btn-primary focus-ring mt-2 sm:hidden" href={cvHref} download={cvFileName} onClick={() => setMenuOpen(false)}>
                 Download CV
-              </button>
+              </a>
             </div>
           </nav>
         ) : null}
@@ -598,7 +601,7 @@ export default function PortfolioClient() {
             </p>
             <div className="no-print mt-8 flex flex-wrap gap-3">
               <a className="btn-primary focus-ring" href="mailto:lehakoe.thinane@gmail.com">Email me</a>
-              <button type="button" className="btn-secondary focus-ring" onClick={() => window.print()}>Download CV</button>
+              <a className="btn-secondary focus-ring" href={cvHref} download={cvFileName}>Download CV (PDF)</a>
             </div>
           </div>
           <dl className="card divide-y divide-[var(--border)] text-sm">
