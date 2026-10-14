@@ -146,11 +146,14 @@ const sideProjects: {
   {
     name: "Shapers Church Platform",
     category: "Platforms",
-    status: "In build",
+    status: "Live",
     summary: "One backend for a Johannesburg church, serving a staff admin portal, an iOS and Android member app, and a static public website.",
     boundary: "Modules talk only through contracts, and code asks for permissions, never roles. Architecture tests fail the build otherwise.",
     stack: [".NET 10", "React", "Expo", "Astro", "PostgreSQL", "Azure"],
-    repos: [{ label: "Repo", href: "https://github.com/LehakoeThinane/Shapers-Church" }],
+    repos: [
+      { label: "Live site", href: "https://www.shaperschurch.com/" },
+      { label: "Repo", href: "https://github.com/LehakoeThinane/Shapers-Church" },
+    ],
   },
   {
     name: "Shapers Church member app",

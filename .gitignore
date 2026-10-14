@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local source files kept out of the repo (the site serves copies from public/)
+/IMG_1446.JPG
+/Lehakoe_Thinane_CV_Systems_Designer_Architect_AI_Engineer.pdf
