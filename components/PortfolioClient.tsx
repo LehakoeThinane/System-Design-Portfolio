@@ -1,66 +1,255 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { Fragment, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import CvMatcher from "@/components/CvMatcher";
+import portrait from "@/public/images/lehakoe-thinane.jpg";
+
+const shell = "mx-auto w-full max-w-[88rem] px-5 sm:px-8 lg:px-12";
 
 const navItems = [
-  { label: "Architecture", href: "#hld", id: "hld" },
-  { label: "Live demo", href: "#demo", id: "demo" },
-  { label: "Components", href: "#systems", id: "systems" },
-  { label: "Decisions", href: "#adr", id: "adr" },
-  { label: "Interactive CV", href: "#cv", id: "cv" },
+  { label: "Architecture", id: "hld" },
+  { label: "Demo", id: "demo" },
+  { label: "Systems", id: "systems" },
+  { label: "Projects", id: "projects" },
+  { label: "Decisions", id: "adr" },
+  { label: "Experience", id: "experience" },
+  { label: "Role match", id: "cv" },
 ];
+
+const heroRoles = ["systems designer", "architect", "AI engineer", "embedded technical owner"];
 
 const heroStats = [
-  { value: 10, suffix: "+", label: "years shipping web and business systems" },
-  { value: 94, suffix: "", label: "PostgreSQL tables designed in one live ERP" },
-  { value: 1380, suffix: "+", label: "automated tests guarding it" },
-  { value: 8, suffix: "+", label: "business units served as embedded owner" },
+  { value: "10+", label: "years shipping web and business systems" },
+  { value: "94", label: "PostgreSQL tables designed in one live ERP" },
+  { value: "1,380+", label: "automated tests guarding it" },
+  { value: "8+", label: "business units served as embedded owner" },
 ];
 
+const layerColor = {
+  client: "#7dd3fc",
+  core: "#ff8a4c",
+  ai: "#a78bfa",
+  data: "#34d399",
+  gate: "#fbbf24",
+} as const;
+
 const diagramNodes = [
-  { id: "clients", title: "Clients", sub: "Next.js · Electron", x: 36, y: 280, w: 166, h: 86, text: "The client layer presents web and desktop surfaces for people using the ERP." },
-  { id: "edge", title: "Edge", sub: "Caddy · Cloudflare", x: 220, y: 280, w: 166, h: 86, text: "The edge handles routing, TLS and platform boundaries before requests reach application code." },
-  { id: "api", title: "API", sub: "modular monolith", x: 414, y: 280, w: 166, h: 86, text: "The API is the selected control point: business changes, tenant scope and event persistence happen here." },
-  { id: "assistant", title: "AI assistant", sub: "runs as the user", x: 622, y: 280, w: 166, h: 86, text: "The assistant uses the asking user's role and business scope. It cannot read more than that user can read." },
-  { id: "models", title: "Model providers", sub: "Groq·Claude·Ollama", x: 816, y: 280, w: 166, h: 86, text: "Model providers help with language, but rules and permissions decide what actions are allowed." },
-  { id: "outbox", title: "Event outbox", sub: "SKIP LOCKED claims", x: 622, y: 128, w: 166, h: 86, text: "Events are written with the business change, then claimed safely by workers for retries and delivery." },
-  { id: "workers", title: "Workers", sub: "Celery · Redis", x: 816, y: 128, w: 166, h: 86, text: "Workers process event flow outside the request path while keeping duplicate actions harmless." },
-  { id: "db", title: "PostgreSQL 17", sub: "tenant data · audit log", x: 414, y: 426, w: 166, h: 86, text: "PostgreSQL stores operational data, tenant boundaries and audit history for the live ERP." },
-  { id: "approval", title: "Human approval", sub: "live writes gated", x: 622, y: 426, w: 166, h: 86, dashed: true, text: "Risky writes are paused for a person to approve before they touch live systems." },
-  { id: "live", title: "Live systems", sub: "ERP · website · webhooks", x: 816, y: 426, w: 166, h: 86, text: "Approved changes land in real operational systems, websites and webhooks." },
+  { id: "clients", title: "Clients", sub: "Next.js · Electron", layer: "client", color: layerColor.client, x: 36, y: 280, w: 166, h: 86, text: "The client layer presents web and desktop surfaces for people using the ERP.", guarantee: "Never talks to data directly; every action goes through the API." },
+  { id: "edge", title: "Edge", sub: "Caddy · Cloudflare", layer: "edge", color: layerColor.client, x: 220, y: 280, w: 166, h: 86, text: "The edge handles routing, TLS and platform boundaries before requests reach application code.", guarantee: "TLS and routing are settled before application code runs." },
+  { id: "api", title: "API", sub: "modular monolith", layer: "core", color: layerColor.core, x: 414, y: 280, w: 166, h: 86, text: "The API is the control point: business changes, tenant scope and event persistence happen here.", guarantee: "Every query is tenant-scoped; a CI guard fails the build on queries outside the repository layer." },
+  { id: "assistant", title: "AI assistant", sub: "runs as the user", layer: "ai", color: layerColor.ai, x: 622, y: 280, w: 166, h: 86, text: "The assistant uses the asking user's role and business scope. It cannot read more than that user can read.", guarantee: "Tools run with the asking user's permissions, and every data access is logged." },
+  { id: "models", title: "Model providers", sub: "Groq · Claude · Ollama", layer: "llm", color: layerColor.ai, x: 816, y: 280, w: 166, h: 86, text: "Model providers help with language, but rules and permissions decide what actions are allowed.", guarantee: "Models word things; they never decide what is allowed." },
+  { id: "outbox", title: "Event outbox", sub: "SKIP LOCKED claims", layer: "async", color: layerColor.core, x: 622, y: 128, w: 166, h: 86, text: "Events are written with the business change, then claimed safely by workers for retries and delivery.", guarantee: "Written in the same transaction as the change, so an event can't be lost." },
+  { id: "workers", title: "Workers", sub: "Celery · Redis", layer: "async", color: layerColor.core, x: 816, y: 128, w: 166, h: 86, text: "Workers process event flow outside the request path while keeping duplicate actions harmless.", guarantee: "Stable action IDs act as idempotency keys; retries use capped backoff." },
+  { id: "db", title: "PostgreSQL 17", sub: "tenants · audit log", layer: "data", color: layerColor.data, x: 414, y: 426, w: 166, h: 86, text: "PostgreSQL stores operational data, tenant boundaries and audit history for the live ERP.", guarantee: "Tenant data and the audit log live together, behind the repository layer." },
+  { id: "approval", title: "Human approval", sub: "live writes gated", layer: "gate", color: layerColor.gate, x: 622, y: 426, w: 166, h: 86, dashed: true, text: "Risky writes are paused for a person to approve before they touch live systems.", guarantee: "Nothing risky reaches a live system without a person signing off." },
+  { id: "live", title: "Live systems", sub: "ERP · web · webhooks", layer: "target", color: layerColor.gate, x: 816, y: 426, w: 166, h: 86, text: "Approved changes land in real operational systems, websites and webhooks.", guarantee: "Only approved, logged changes land here." },
+];
+
+type EdgeKind = "request" | "event" | "data" | "gate";
+
+const edgeColor: Record<EdgeKind, string> = {
+  request: layerColor.client,
+  event: layerColor.core,
+  data: layerColor.data,
+  gate: layerColor.gate,
+};
+
+const diagramEdges: { from: string; to: string; d: string; kind: EdgeKind }[] = [
+  { from: "clients", to: "edge", d: "M202 323 H218", kind: "request" },
+  { from: "edge", to: "api", d: "M386 323 H412", kind: "request" },
+  { from: "api", to: "assistant", d: "M580 323 H620", kind: "request" },
+  { from: "assistant", to: "models", d: "M788 323 H814", kind: "request" },
+  { from: "api", to: "db", d: "M497 366 V424", kind: "data" },
+  { from: "api", to: "outbox", d: "M497 280 V171 H620", kind: "event" },
+  { from: "outbox", to: "workers", d: "M788 171 H814", kind: "event" },
+  { from: "assistant", to: "approval", d: "M705 366 V424", kind: "gate" },
+  { from: "approval", to: "live", d: "M788 469 H814", kind: "gate" },
+];
+
+// Long routes the glowing packets travel along; nodes are drawn on top, so packets pass "through" them.
+const packetRoutes = [
+  { d: "M202 323 H816", color: layerColor.client, dur: "3.4s", begin: "0s" },
+  { d: "M497 280 V171 H816", color: layerColor.core, dur: "3s", begin: "0.9s" },
+  { d: "M705 366 V469 H816", color: layerColor.gate, dur: "3.8s", begin: "1.7s" },
+  { d: "M497 366 V426", color: layerColor.data, dur: "1.8s", begin: "0.4s" },
+];
+
+const diagramLanes = [
+  { y: 116, h: 112, label: "Async · event outbox" },
+  { y: 258, h: 128, label: "Request path" },
+  { y: 404, h: 124, label: "Data & control" },
 ];
 
 const eventStages = [
-  "1. API commits the business change and event together.",
-  "2. Event outbox stores the durable work item.",
-  "3. Workers claim the event with SKIP LOCKED and process it.",
+  "The API commits the business change and its event in one transaction.",
+  "The event outbox holds the durable work item.",
+  "Workers claim it with SKIP LOCKED and process it, retrying safely.",
 ];
 
 const systems = [
   {
     component: "BiznizFlowPilot",
-    status: "live",
+    status: "Live",
     link: "https://app.mmnexus.co.za",
+    linkLabel: "app.mmnexus.co.za",
     purpose: "ERP for South African SMEs: inventory, sales, invoicing with VAT, finance, HR/payroll and an AI assistant.",
     boundary: "Every query is tenant-scoped, and a CI guard fails the build on queries outside the repository layer.",
-    stack: "FastAPI, PostgreSQL, Celery, Next.js, Azure",
+    note: "Role-scoped AI assistant with audited data access; event-driven workflows through a transactional outbox. Also the CRM behind two of my client builds.",
+    stack: ["FastAPI", "PostgreSQL", "Celery", "Next.js", "Azure"],
   },
   {
     component: "AI Growth Platform",
     status: "MVP",
-    link: "https://github.com/LehakoeThinane",
+    link: "https://github.com/LehakoeThinane/ai-growth-platform",
+    linkLabel: "ai-growth-platform",
     purpose: "Agent runtime for growth planning and incident triage.",
     boundary: "One validated tool call per step. Write permission comes from the operator, never the model.",
-    stack: ".NET 10, EF Core, OpenAI function calling",
+    note: "Step limits, and runs are marked complete only after server re-checks.",
+    stack: [".NET 10", "EF Core", "OpenAI function calling"],
   },
   {
     component: "SEO-GEO Agent",
     status: "MVP",
-    link: "https://github.com/LehakoeThinane",
+    link: "https://github.com/LehakoeThinane/V1.0-seo-geo-agent-clean",
+    linkLabel: "seo-geo-agent",
     purpose: "Crawls a site, finds SEO issues, and applies approved fixes to WordPress.",
     boundary: "Rules decide what is safe to apply. The LLM only improves wording.",
-    stack: "FastAPI, WordPress REST API, OpenAI/Groq/Ollama",
+    note: "Provider fallback across OpenAI, Groq and Ollama, and human approval before live writes.",
+    stack: ["FastAPI", "WordPress REST API", "OpenAI", "Groq", "Ollama"],
   },
+];
+
+type ProjectCategory = "Platforms" | "Mobile" | "Fintech" | "Client builds";
+
+const projectCategories: ProjectCategory[] = ["Platforms", "Mobile", "Fintech", "Client builds"];
+
+const sideProjects: {
+  name: string;
+  category: ProjectCategory;
+  status: string;
+  summary: string;
+  boundary: string;
+  stack: string[];
+  repos: { label: string; href: string }[];
+}[] = [
+  {
+    name: "Plinth",
+    category: "Platforms",
+    status: "In build",
+    summary: "An enterprise knowledge exchange: organisations, hubs, SSO sign-in, consent notices, custom domains and learner progress.",
+    boundary: "Every access decision is tenant-scoped and checked against authoritative version counters, with PostgreSQL row-level security underneath. Message recipients are re-authorised at delivery.",
+    stack: ["Node.js", "PostgreSQL 17", "Redis", "Terraform", "GitHub Actions"],
+    repos: [{ label: "Repo", href: "https://github.com/LehakoeThinane/Plinth" }],
+  },
+  {
+    name: "Shapers Church Platform",
+    category: "Platforms",
+    status: "In build",
+    summary: "One backend for a Johannesburg church, serving a staff admin portal, an iOS and Android member app, and a static public website.",
+    boundary: "Modules talk only through contracts, and code asks for permissions, never roles. Architecture tests fail the build otherwise.",
+    stack: [".NET 10", "React", "Expo", "Astro", "PostgreSQL", "Azure"],
+    repos: [{ label: "Repo", href: "https://github.com/LehakoeThinane/Shapers-Church" }],
+  },
+  {
+    name: "Shapers Church member app",
+    category: "Mobile",
+    status: "In build",
+    summary: "Cross-platform iOS and Android app for church members: sermons, events and QR tickets, kids check-in, prayer, serving rosters and an inbox, with SMS sign-in codes and push notifications.",
+    boundary: "Screens use a typed API client generated from the backend's OpenAPI document, credentials go in the device's secure store, and colours come only from shared theme tokens, which CI enforces.",
+    stack: ["Expo", "React Native", "Expo Router", "Reanimated", "Liquid Glass", "Push notifications"],
+    repos: [{ label: "Repo", href: "https://github.com/LehakoeThinane/Shapers-Church" }],
+  },
+  {
+    name: "MiXiT",
+    category: "Mobile",
+    status: "In build",
+    summary: "A social matching app: phone sign-in, profiles with interests and intents, a scored discover feed, realtime chat with read receipts, group rooms and premium boosts.",
+    boundary: "Six backend modules (auth, profiles, matching, messaging, rooms, payments) behind one API. Refresh tokens rotate on every use and are revoked at logout.",
+    stack: ["Expo", "React Native", "Fastify", "Prisma", "PostgreSQL", "Redis", "Socket.io"],
+    repos: [{ label: "Repo", href: "https://github.com/LehakoeThinane/MiXiT" }],
+  },
+  {
+    name: "ARCHITEKT · Brick by Brick",
+    category: "Mobile",
+    status: "Live",
+    summary: "An installable, offline-first quiz app for learning systems design, architecture, DevOps and AI. It tracks correctness, speed and topic mastery, then brings weak areas back with spaced repetition.",
+    boundary: "Mastery logic lives in a pure domain layer: a six-state machine and a weighted selector (weakness 50%, time since seen 30%, difficulty 20%). Offline answers sync idempotently, and the server recalculates mastery.",
+    stack: ["React PWA", "IndexedDB", "Service Workers", "FastAPI", "PostgreSQL", "Vercel"],
+    repos: [
+      { label: "Live app", href: "https://brick-by-brick-quiz.vercel.app" },
+      { label: "Repo", href: "https://github.com/LehakoeThinane/Brick-By-Brick-Quiz" },
+    ],
+  },
+  {
+    name: "LendFlow",
+    category: "Fintech",
+    status: "Staging",
+    summary: "Loan origination SaaS: multi-step applications, KYC, document analysis, affordability and fraud checks, decisioning and a manual review queue.",
+    boundary: "Decisions are deterministic and audited. Chatbots and AI explanations are deliberately secondary to underwriting and compliance.",
+    stack: ["Python", "FastAPI", "Alembic", "PostgreSQL", "Render"],
+    repos: [{ label: "Repo", href: "https://github.com/LehakoeThinane/LendFlow-SaaS" }],
+  },
+  {
+    name: "PaySlip Checker",
+    category: "Fintech",
+    status: "MVP",
+    summary: "Upload a PDF payslip and get gross pay, PAYE, UIF and net pay checked against deterministic rules: pass, warning or fail.",
+    boundary: "No OCR and no AI fraud claims. Every verdict is traceable to a rule, and uploaded files are deleted after extraction.",
+    stack: ["Next.js 16", "React 19", "TypeScript", "pdf.js"],
+    repos: [{ label: "Repo", href: "https://github.com/LehakoeThinane/PaySlip-Checker" }],
+  },
+  {
+    name: "SA Tax Calculator",
+    category: "Fintech",
+    status: "Shipped",
+    summary: "South African PAYE, UIF, medical tax credits and take-home pay, as a Next.js web app and a WordPress plugin, both with PDF summaries.",
+    boundary: "The tax engine is kept separate from the UI, so the app, the plugin and the payslip checker can share it.",
+    stack: ["Next.js", "TypeScript", "jsPDF", "WordPress", "PHP"],
+    repos: [
+      { label: "Web app", href: "https://github.com/LehakoeThinane/tax-calculator-application" },
+      { label: "Plugin", href: "https://github.com/LehakoeThinane/Income-Tax-Calculator" },
+    ],
+  },
+  {
+    name: "Mohlakoana Attorneys",
+    category: "Client builds",
+    status: "In build",
+    summary: "Website and client portal for a law firm, with one FastAPI backend as the only choke point for both front doors.",
+    boundary: "The database holding ID numbers and matter details has no outgoing connection. A single sync adapter forwards only what the CRM needs to BiznizFlowPilot.",
+    stack: ["FastAPI", "MySQL", "TypeScript", "BiznizFlowPilot"],
+    repos: [{ label: "Repo", href: "https://github.com/LehakoeThinane/Mohlakoana-Attorneys-Website" }],
+  },
+  {
+    name: "Zoya · BE HEARD",
+    category: "Client builds",
+    status: "Client site",
+    summary: "Static Astro pages up front, with a small serverless Bridge API to BiznizFlowPilot, PayFast payments and Turnstile bot protection.",
+    boundary: "Only the Bridge talks to the CRM and payments. Every push is typechecked, built and audited with Lighthouse CI.",
+    stack: ["Astro", "Tailwind", "PayFast", "Turnstile", "GitHub Actions"],
+    repos: [{ label: "Repo", href: "https://github.com/LehakoeThinane/Zoya-Website" }],
+  },
+  {
+    name: "Prime Vest",
+    category: "Client builds",
+    status: "Client build",
+    summary: "Investment platform: an admin-editable public site, and a JWT-authenticated investor dashboard with KYC status, portfolio performance and Paystack payments.",
+    boundary: "Investor data sits behind a JWT-authenticated API, and the public site's content is edited by admins, not hard-coded.",
+    stack: ["Django REST", "Next.js", "PostgreSQL", "Paystack", "Docker"],
+    repos: [{ label: "Repo", href: "https://github.com/LehakoeThinane/Prime-Vesting-Website" }],
+  },
+];
+
+const stackFile = [
+  { key: "languages", values: ["Python", "TypeScript", "C#", "PHP"] },
+  { key: "backend", values: ["FastAPI", ".NET 10", "EF Core", "Django REST", "Fastify", "Celery"] },
+  { key: "data", values: ["PostgreSQL 17", "MySQL", "Redis"] },
+  { key: "frontend", values: ["Next.js", "React", "Astro", "Expo", "Electron"] },
+  { key: "ai", values: ["OpenAI", "Claude", "Groq", "Ollama"] },
+  { key: "cloud", values: ["Azure", "AWS", "OCI", "Cloudflare"] },
+  { key: "infra", values: ["Terraform", "Bicep", "Docker", "GitHub Actions", "Caddy"] },
+  { key: "platforms", values: ["WordPress", "HubSpot", "Drupal", "Shopify", "AEM"] },
 ];
 
 const adrs = [
@@ -90,72 +279,59 @@ const adrs = [
   },
 ];
 
+const processSteps = [
+  { title: "Map the pressure", text: "Find the real operating pressure and the systems already in play." },
+  { title: "Draw the boundaries", text: "Tenant scope, permissions, data flow and approval points." },
+  { title: "Build a thin path", text: "One working path end to end before widening the workflow." },
+  { title: "Instrument it", text: "Logs, tests, backups and release checks." },
+  { title: "Hand it over", text: "A system the team can operate after launch." },
+];
+
 const measuredResults = [
   { value: "25%", label: "better order-processing efficiency, from a React product configurator" },
   { value: "30%", label: "more e-commerce conversions, from cart-abandonment automation and a redesigned checkout" },
   { value: "90+", label: "average Google PageSpeed score across 10+ production client sites" },
 ];
 
+// **text** marks the facts a skimming reader should catch.
 const experience = [
   {
-    title: "Tax Consulting South Africa",
-    role: "Embedded solution design and AI engineering · 2024 - now",
+    org: "Tax Consulting South Africa",
+    role: "Embedded solution design and AI engineering",
+    period: "2024 — now",
     points: [
-      "Technical owner for consultants across 8+ business units, aligning each design with the CTO before build.",
-      "2-4 concurrent projects, about 75-80% AI and automation on .NET, Azure and AWS.",
-      "Deployed AI agents for marketing, and built authentication, encryption, audit logging and backups into systems holding financial data.",
+      "Technical owner for consultants across **8+ business units**, aligning each design with the CTO before build.",
+      "**2-4 concurrent projects**, about **75-80% AI and automation** on .NET, Azure and AWS.",
+      "Deployed AI agents for marketing, and built **authentication, encryption, audit logging and backups** into systems holding financial data.",
     ],
   },
   {
-    title: "Baher Al-Damasy Group",
-    role: "Integration-first automation · 2022 - 2024",
+    org: "Baher Al-Damasy Group",
+    role: "Integration-first automation",
+    period: "2022 — 2024",
     points: [
-      "Layered automations and AI workflows onto existing HubSpot, CRM and ERP platforms.",
-      "Ran infrastructure on OCI, AWS and Azure, codified with Terraform and OCI CLI.",
+      "Layered automations and AI workflows onto existing **HubSpot, CRM and ERP** platforms.",
+      "Ran infrastructure on **OCI, AWS and Azure**, codified with **Terraform** and OCI CLI.",
     ],
   },
   {
-    title: "EQ4 Digital Communication",
-    role: "Team lead, web and development · 2020 - 2022",
+    org: "EQ4 Digital Communication",
+    role: "Team lead, web and development",
+    period: "2020 — 2022",
     points: [
-      "Architected a multi-tenant marketplace where vendors rent storefronts.",
+      "Architected a **multi-tenant marketplace** where vendors rent storefronts.",
       "Scoped work from briefs, choosing WordPress or custom builds.",
     ],
   },
   {
-    title: "Godlove Group, Hadithi Ya Africa",
-    role: "Automation and CMS platforms · 2015 - 2020",
+    org: "Godlove Group, Hadithi Ya Africa",
+    role: "Automation and CMS platforms",
+    period: "2015 — 2020",
     points: [
-      "Enquiry chatbots for a fixed-date launch, and CRM integration workflows.",
+      "Enquiry chatbots for a **fixed-date launch**, and CRM integration workflows.",
       "Custom WordPress themes, Adobe Experience Manager, Drupal, Shopify.",
     ],
   },
-  {
-    title: "BiznizFlowPilot",
-    role: "Project · live multi-tenant ERP",
-    points: [
-      "FastAPI, PostgreSQL, Celery, Next.js. Event-driven workflows and tenant isolation enforced in CI.",
-      "Role-scoped AI assistant with audited data access.",
-    ],
-  },
-  {
-    title: "AI Growth Platform",
-    role: "Project · .NET 10 agent runtime",
-    points: ["Schema-validated tool calls, step limits, and runs marked complete only after server re-checks."],
-  },
-  {
-    title: "SEO-GEO Agent",
-    role: "Project · approval-gated web agent",
-    points: ["Rules decide, LLM words. Provider fallback and human approval before live writes."],
-  },
-];
-
-const processSteps = [
-  "Map the real operating pressure and the systems already in play.",
-  "Draw the boundaries: tenant scope, permissions, data flow and approval points.",
-  "Build a thin working path before widening the workflow.",
-  "Instrument the system with logs, tests, backups and release checks.",
-  "Hand over a system that the team can operate after launch.",
 ];
 
 const roles = ["Owner", "Sales rep", "Intern"];
@@ -167,24 +343,24 @@ const requests = [
   "Summarize inventory risk",
 ];
 
-function formatStat(value: number, suffix: string, active: boolean) {
-  if (!active) return `0${suffix}`;
-  return `${value.toLocaleString()}${suffix}`;
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function timeStamp() {
+  return new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 export default function PortfolioClient() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState("hld");
-  const [statsVisible, setStatsVisible] = useState(false);
+  const [activeSection, setActiveSection] = useState("");
   const [selectedNode, setSelectedNode] = useState("api");
   const [openAdr, setOpenAdr] = useState(0);
   const [role, setRole] = useState("Owner");
   const [request, setRequest] = useState("");
   const [demoLines, setDemoLines] = useState<string[]>([]);
-  const [audit, setAudit] = useState<string[]>(["Nothing logged yet."]);
-  const [jobText, setJobText] = useState("");
-  const [matched, setMatched] = useState(false);
-  const [openExperience, setOpenExperience] = useState<string | null>(null);
+  const [audit, setAudit] = useState<string[]>([]);
+  const demoTimers = useRef<number[]>([]);
 
   useEffect(() => {
     const sections = navItems.map((item) => document.getElementById(item.id)).filter(Boolean);
@@ -194,437 +370,879 @@ export default function PortfolioClient() {
           if (entry.isIntersecting) setActiveSection(entry.target.id);
         });
       },
-      { rootMargin: "-25% 0px -60% 0px" },
+      { rootMargin: "-30% 0px -60% 0px" },
     );
     sections.forEach((section) => section && observer.observe(section));
     return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
-    window.setTimeout(() => setStatsVisible(true), 250);
-    const targets = document.querySelectorAll(".reveal");
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("is-visible");
-            if (entry.target.id === "stats-row") setStatsVisible(true);
-          }
-        });
-      },
-      { threshold: 0.16 },
-    );
-    targets.forEach((target) => observer.observe(target));
-    return () => observer.disconnect();
+    const timers = demoTimers.current;
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, []);
 
-  useEffect(() => {
-    if (!request) return;
-    const scenario = buildScenario(role, request);
+  // Each run cancels the previous one, so fast clicking never interleaves two scenarios.
+  // The audit trail is append-only, like a real one.
+  function runDemo(nextRole: string, nextRequest: string) {
+    setRole(nextRole);
+    setRequest(nextRequest);
+    demoTimers.current.forEach((timer) => window.clearTimeout(timer));
+    demoTimers.current = [];
+    if (!nextRequest) return;
     setDemoLines([]);
-    setAudit([]);
-    scenario.forEach((line, index) => {
-      window.setTimeout(() => {
+    buildScenario(nextRole, nextRequest).forEach((line, index) => {
+      const timer = window.setTimeout(() => {
         setDemoLines((current) => [...current, line]);
-        setAudit((current) => [...current, `${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} ${line}`]);
-      }, 280 * (index + 1));
+        setAudit((current) => [...current, `${timeStamp()}  ${nextRole} · ${line}`].slice(-12));
+      }, 260 * (index + 1));
+      demoTimers.current.push(timer);
     });
-  }, [role, request]);
+  }
 
-  const cvResult = useMemo(() => scoreJob(jobText), [jobText]);
   const selected = diagramNodes.find((node) => node.id === selectedNode) ?? diagramNodes[2];
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[var(--navy-950)] text-[var(--foreground)] selection:bg-[var(--accent)]/30">
-      <div className="pointer-events-none fixed inset-0 blueprint-bg" />
-      <div className="relative z-10 mx-auto max-w-[62rem] px-4 pb-20">
-        <header className="sticky top-3 z-30 pt-3">
-          <div className="mb-2 flex items-center gap-1 text-sm text-slate-300">
-            <span>Lehakoe Thinane — Systems Designer & Architect</span>
-            <span className="text-slate-500">⌄</span>
-          </div>
-          <nav className="panel rounded-[20px] bg-[rgba(9,28,49,0.82)] px-2 py-2 backdrop-blur-xl" aria-label="Primary">
-            <div className="flex items-center justify-between gap-3">
-              <a href="#contact" className="focus-orange flex items-center gap-2 rounded-full px-2 py-3 font-mono text-sm font-semibold text-[var(--muted)]">
-                <span className="grid h-6 w-6 place-items-center rounded-full bg-[#1a3848]">
-                  <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[var(--green)]" />
-                </span>
-                <span className="hidden sm:inline">Available for new roles</span>
-              </a>
-              <div className="hidden items-center gap-6 md:flex">
-                {navItems.map((item) => (
-                  <a
-                    key={item.href}
-                    href={item.href}
-                    className={`focus-orange font-mono text-xs font-bold tracking-[0.05em] transition-colors ${
-                      activeSection === item.id ? "text-slate-100" : "text-[var(--muted)] hover:text-slate-200"
-                    }`}
-                  >
-                    {item.label}
-                  </a>
-                ))}
-              </div>
-              <button
-                type="button"
-                className="focus-orange rounded-full border border-[var(--line)] px-4 py-3 font-mono text-xs font-bold text-slate-200 md:hidden"
-                onClick={() => setMenuOpen((current) => !current)}
-              >
-                Menu
-              </button>
-              <a
-                href="mailto:lehakoe.thinane@gmail.com?subject=CV%20request"
-                className="focus-orange rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-extrabold text-[var(--accent-dark)] shadow-[0_10px_35px_rgba(255,138,76,0.22)] transition-colors hover:bg-[#ffa06b]"
-              >
-                Request CV
-              </a>
-            </div>
-            {menuOpen ? (
-              <div className="mt-3 grid gap-2 border-t border-[var(--line)] pt-3 md:hidden">
-                {navItems.map((item) => (
-                  <a key={item.href} href={item.href} className="focus-orange rounded-full px-3 py-2 font-mono text-sm text-[var(--muted)]" onClick={() => setMenuOpen(false)}>
-                    {item.label}
-                  </a>
-                ))}
-              </div>
-            ) : null}
-          </nav>
-        </header>
+    <main id="top" className="min-h-screen overflow-x-clip">
+      <div className={`${shell} hidden items-center gap-5 border-b border-[#ccc] pb-4 print:flex`}>
+        <Image src={portrait} alt="" width={72} height={72} className="h-[72px] w-[72px] rounded-full object-cover object-[50%_35%]" />
+        <div>
+          <p className="text-2xl font-semibold">Lehakoe Thinane — Systems Designer & Architect</p>
+          <p className="mt-1 text-xs">Johannesburg, South Africa · lehakoe.thinane@gmail.com · +27 81 243 9693 · github.com/LehakoeThinane · linkedin.com/in/lehakoe-stanley-thinane-38b854188</p>
+        </div>
+      </div>
 
-        <section className="reveal pt-6">
-          <div className="max-w-[45rem]">
-            <p className="font-mono text-sm font-bold text-[var(--muted)]">Controlled boundaries.</p>
-            <h1 className="mt-3 text-[clamp(2.65rem,5.2vw,4.7rem)] font-black leading-[0.95] tracking-normal text-slate-100">
+      <header className="no-print sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-md">
+        <div className={`${shell} flex h-16 items-center justify-between gap-6`}>
+          <a href="#top" className="focus-ring flex items-center gap-3 rounded-md">
+            <Image src={portrait} alt="" width={32} height={32} className="h-8 w-8 rounded-full object-cover object-[50%_35%]" />
+            <span className="text-sm font-semibold text-[var(--text)]">Lehakoe Thinane</span>
+          </a>
+          <nav className="hidden items-center gap-1 lg:flex" aria-label="Primary">
+            {navItems.map((item) => (
+              <a
+                key={item.id}
+                href={`#${item.id}`}
+                aria-current={activeSection === item.id ? "true" : undefined}
+                className={`focus-ring rounded-md px-3 py-2 text-sm transition-colors ${
+                  activeSection === item.id ? "bg-[var(--surface-strong)] text-[var(--text)]" : "text-[var(--muted)] hover:text-[var(--text)]"
+                }`}
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
+          <div className="flex items-center gap-2">
+            <button type="button" className="btn-primary focus-ring hidden py-2 sm:inline-flex" onClick={() => window.print()}>
+              Download CV
+            </button>
+            <button
+              type="button"
+              aria-expanded={menuOpen}
+              aria-controls="mobile-nav"
+              className="btn-secondary focus-ring py-2 lg:hidden"
+              onClick={() => setMenuOpen((current) => !current)}
+            >
+              {menuOpen ? "Close" : "Menu"}
+            </button>
+          </div>
+        </div>
+        {menuOpen ? (
+          <nav id="mobile-nav" className="border-t border-[var(--border)] lg:hidden" aria-label="Primary">
+            <div className={`${shell} grid gap-1 py-3`}>
+              {navItems.map((item) => (
+                <a key={item.id} href={`#${item.id}`} className="focus-ring rounded-md px-3 py-2.5 text-sm text-[var(--muted)] hover:bg-[var(--surface-strong)] hover:text-[var(--text)]" onClick={() => setMenuOpen(false)}>
+                  {item.label}
+                </a>
+              ))}
+              <button type="button" className="btn-primary focus-ring mt-2 sm:hidden" onClick={() => window.print()}>
+                Download CV
+              </button>
+            </div>
+          </nav>
+        ) : null}
+      </header>
+
+      <section className="relative">
+        <div className="hero-grid pointer-events-none absolute inset-0" />
+        <div className={`${shell} relative grid gap-12 pb-14 pt-14 sm:pt-20 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-center lg:gap-16 lg:pb-20 lg:pt-24 print:block print:py-6`}>
+          <div>
+            <p className="no-print inline-flex items-center gap-2 rounded-full border border-[var(--border-strong)] px-3 py-1 text-xs font-medium text-[var(--muted)]">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--green)] opacity-50" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--green)]" />
+              </span>
+              Available for new roles
+            </p>
+            <h1 className="mt-6 text-[clamp(2.5rem,5.4vw,4.75rem)] font-semibold leading-[1.02] tracking-[-0.035em] text-[var(--text)]">
               I design the system, then build it.
             </h1>
-            <p className="mt-4 max-w-[42rem] text-base leading-7 text-[var(--muted)]">
-              Lehakoe Thinane. Systems designer and architect, AI engineer. Ten years of shipping web and business systems, now focused on AI that stays inside controlled boundaries.
+            <p className="no-print mt-6 font-mono text-sm text-[var(--dim)]">
+              <span className="text-[var(--accent)]">$</span> whoami
+              <span className="ml-3 text-[var(--text)]"><RotatingRole /></span>
             </p>
-            <p className="mt-3 font-mono text-sm text-[var(--dim)]">
-              Johannesburg, South Africa · open to remote, hybrid and client-embedded work
+            <p className="mt-6 max-w-[40rem] text-[17px] leading-8 text-[var(--muted)]">
+              Systems designer, architect and AI engineer. Ten years of shipping web and business systems, now focused on AI that stays inside controlled boundaries: assistants that run with the user&apos;s permissions, agents that ask before they write, and event flows that don&apos;t lose work.
             </p>
+            <div className="no-print mt-8 flex flex-wrap gap-3">
+              <a className="btn-primary focus-ring" href="#cv">Match me to your role</a>
+              <a className="btn-secondary focus-ring" href="https://app.mmnexus.co.za" target="_blank" rel="noopener noreferrer">See the live ERP ↗</a>
+              <a className="btn-secondary focus-ring" href="mailto:lehakoe.thinane@gmail.com">Email me</a>
+            </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <a className="focus-orange rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-extrabold text-[var(--accent-dark)]" href="#cv">Match me to your role</a>
-            <a className="focus-orange rounded-full border border-[var(--line)] bg-[#0b1d31]/75 px-5 py-3 text-sm font-extrabold text-slate-300" href="https://app.mmnexus.co.za" target="_blank" rel="noopener noreferrer">See the live ERP</a>
-            <a className="focus-orange rounded-full border border-[var(--line)] bg-[#0b1d31]/75 px-5 py-3 text-sm font-extrabold text-slate-300" href="mailto:lehakoe.thinane@gmail.com">Email me</a>
-          </div>
-        </section>
+          <ProfileCard />
+        </div>
 
-        <section id="stats-row" className="reveal mt-5 grid gap-3 md:grid-cols-4" aria-label="Portfolio statistics">
-          {heroStats.map((stat) => (
-            <article key={stat.label} className="panel min-h-[7rem] rounded-[20px] p-4">
-              <p className="font-mono text-[2.5rem] font-black leading-none text-slate-100 md:text-[3rem]">
-                {formatStat(stat.value, stat.suffix, statsVisible)}
-              </p>
-              <p className="mt-3 text-sm font-bold leading-6 text-[var(--muted)]">{stat.label}</p>
-            </article>
-          ))}
-        </section>
+        <div className={shell}>
+          <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-[14px] border border-[var(--border)] bg-[var(--border)] lg:grid-cols-4 print:grid-cols-4" aria-label="Portfolio statistics">
+            {heroStats.map((stat) => (
+              <div key={stat.label} className="flex flex-col gap-2 bg-[var(--bg)] p-5 sm:p-6">
+                <dt className="order-2 text-sm leading-6 text-[var(--muted)]">{stat.label}</dt>
+                <dd className="order-1 text-3xl font-semibold tracking-tight tabular-nums text-[var(--text)] sm:text-4xl">{stat.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
 
+      <Section id="hld" index="01" label="Architecture" title="One live system, drawn end to end" intro="The high-level design of BiznizFlowPilot, a multi-tenant ERP in production. Select any component to see the job it does and the boundary it holds." wide className="no-print">
         <ArchitectureDiagram selected={selected} selectedNode={selectedNode} onSelect={setSelectedNode} />
+      </Section>
 
-        <LiveDemo role={role} setRole={setRole} request={request} setRequest={setRequest} lines={demoLines} audit={audit} />
+      <Section id="demo" index="02" label="Live demo" title="AI that's checked, logged and gated" intro="A simulated version of the assistant inside BiznizFlowPilot. Pick who is asking and what they want, then switch roles and watch the same request get a different answer." className="no-print">
+        <LiveDemo role={role} request={request} onRun={runDemo} lines={demoLines} audit={audit} />
+      </Section>
 
-        <ComponentsTable />
+      <Section id="systems" index="03" label="Systems" title="Systems I've designed and built" intro="Each one is a different answer to the same question: where do the boundaries go?">
+        <div className="grid gap-4">
+          {systems.map((system) => <SystemCard key={system.component} system={system} />)}
+          <StackFile />
+        </div>
+      </Section>
 
-        <section id="adr" className="reveal mt-16">
-          <SectionTitle eyebrow="Decision records" title="The choices behind the diagram" copy="The choices behind the diagram, written the way I write them for clients." />
-          <div className="mt-6 grid gap-3">
-            {adrs.map((adr, index) => (
-              <article key={adr.title} className="panel overflow-hidden rounded-[20px]">
-                <button type="button" className="focus-orange flex w-full items-center justify-between gap-4 px-5 py-4 text-left" onClick={() => setOpenAdr(openAdr === index ? -1 : index)}>
-                  <span className="text-lg font-bold text-slate-100">{adr.title}</span>
-                  <span className="font-mono text-[var(--accent)]">{openAdr === index ? "−" : "+"}</span>
-                </button>
-                {openAdr === index ? (
-                  <dl className="grid gap-4 border-t border-[var(--line)] px-5 py-5 text-sm leading-6 text-[var(--muted)] md:grid-cols-3">
-                    <AdrTerm label="Context" value={adr.context} />
-                    <AdrTerm label="Decision" value={adr.decision} />
-                    <AdrTerm label="Trade-off" value={adr.tradeoff} />
-                  </dl>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        </section>
+      <Section id="projects" index="04" label="Side projects" title="Built on my own time" intro="Platforms, fintech tools and client builds outside my day jobs. Every one is a public repo, and each draws its boundary somewhere different.">
+        <SideProjects />
+      </Section>
 
-        <section className="reveal mt-16">
-          <SectionTitle eyebrow="How I work" title="From first conversation to release" copy="The path every embedded project follows, from first conversation to release." />
-          <div className="mt-6 grid gap-3 md:grid-cols-5">
-            {processSteps.map((step, index) => (
-              <article key={step} className="panel rounded-[20px] p-4">
-                <p className="font-mono text-sm font-black text-[var(--accent)]">0{index + 1}</p>
-                <p className="mt-4 text-sm font-semibold leading-6 text-[var(--muted)]">{step}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="reveal mt-16">
-          <SectionTitle eyebrow="Measured results" title="Outcomes from earlier client work" />
-          <div className="mt-6 grid gap-3 md:grid-cols-3">
-            {measuredResults.map((result) => (
-              <article key={result.value} className="panel rounded-[20px] p-5">
-                <p className="font-mono text-5xl font-black text-slate-100">{result.value}</p>
-                <p className="mt-4 text-sm font-bold leading-6 text-[var(--muted)]">{result.label}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section id="cv" className="reveal mt-16">
-          <SectionTitle eyebrow="Interactive CV" title="Paste a job description" copy="You get an honest match score, the evidence behind it, and the gaps." />
-          <div className="mt-6 grid items-stretch gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="panel flex h-full flex-col rounded-[20px] p-5">
-              <label htmlFor="job" className="font-mono text-sm font-bold text-[var(--muted)]">Job description</label>
-              <textarea id="job" className="focus-orange mt-3 min-h-40 flex-1 w-full resize-y rounded-2xl border border-[var(--line)] bg-[#071421] p-4 text-sm leading-6 text-slate-100 placeholder:text-[var(--dim)]" placeholder="Paste a job description" value={jobText} onChange={(event) => setJobText(event.target.value)} />
-              <button type="button" className="focus-orange mt-4 rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-extrabold text-[var(--accent-dark)]" onClick={() => setMatched(true)}>
-                Match me
-              </button>
-            </div>
-            <div className="panel h-full rounded-[20px] p-5">
-              <p className="font-mono text-sm font-bold text-[var(--muted)]">Match score</p>
-              <div className="mt-4 h-4 rounded-full bg-[#071421]">
-                <div className="h-full rounded-full bg-[var(--accent)] transition-all duration-700" style={{ width: `${matched ? cvResult.score : 0}%` }} />
-              </div>
-              <p className="mt-4 font-mono text-4xl font-black text-slate-100">{matched ? cvResult.score : 0}%</p>
-              <div className="mt-5 grid gap-4 text-sm leading-6 text-[var(--muted)] md:grid-cols-2">
-                <div>
-                  <p className="font-mono font-bold text-[var(--accent)]">Evidence</p>
-                  <ul className="mt-2 list-disc space-y-2 pl-5">
-                    {(matched ? cvResult.evidence : ["Paste a role and run the matcher."]).map((item) => <li key={item}>{item}</li>)}
-                  </ul>
-                </div>
-                <div>
-                  <p className="font-mono font-bold text-[var(--accent)]">Honest gaps</p>
-                  <ul className="mt-2 list-disc space-y-2 pl-5">
-                    {(matched ? cvResult.gaps : ["Gaps appear after matching."]).map((item) => <li key={item}>{item}</li>)}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="relative mt-5 grid gap-3 before:absolute before:bottom-2 before:left-[1.125rem] before:top-2 before:hidden before:w-px before:bg-[var(--line)] md:before:block">
-            {experience.map((entry) => (
-              <article key={entry.title} className="relative pl-12">
-                <span className="absolute left-[1.125rem] top-7 hidden h-3.5 w-3.5 -translate-x-1/2 rounded-full border-2 border-[var(--accent)] bg-[var(--navy-950)] shadow-[0_0_18px_rgba(255,138,76,0.48)] md:block" />
-                <div className="panel rounded-[20px]">
-                  <button
-                    type="button"
-                    aria-expanded={openExperience === entry.title}
-                    className="focus-orange flex w-full items-center justify-between gap-4 px-5 py-5 text-left"
-                    onClick={() => setOpenExperience((current) => (current === entry.title ? null : entry.title))}
-                  >
-                    <span className="text-lg font-bold text-slate-100">{entry.title}</span>
-                    <span className="font-mono text-sm font-black text-[var(--accent)]">
-                      {openExperience === entry.title ? "close" : "open"}
-                    </span>
+      <Section id="adr" index="05" label="Decisions" title="The choices behind the diagram" intro="Written the way I write them for clients: the context, the decision, and what it costs.">
+        <div className="card divide-y divide-[var(--border)] overflow-hidden">
+          {adrs.map((adr, index) => {
+            const open = openAdr === index;
+            return (
+              <article key={adr.title}>
+                <h3>
+                  <button type="button" aria-expanded={open} className="focus-ring flex w-full items-center gap-4 px-5 py-5 text-left transition-colors hover:bg-[var(--surface)] sm:px-6" onClick={() => setOpenAdr(open ? -1 : index)}>
+                    <span className="hidden font-mono text-xs text-[var(--dim)] sm:inline">ADR-00{index + 1}</span>
+                    <span className="flex-1 text-base font-semibold text-[var(--text)] sm:text-lg">{adr.title}</span>
+                    <span aria-hidden="true" className={`no-print text-xl leading-none text-[var(--dim)] transition-transform ${open ? "rotate-45" : ""}`}>+</span>
                   </button>
-
-                  {openExperience === entry.title ? (
-                    <div className="border-t border-[var(--line)] px-5 pb-5 pt-4">
-                      <p className="font-mono text-xs font-bold leading-5 text-[var(--accent)]">{entry.role}</p>
-                      <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-[var(--muted)]">
-                        {entry.points.map((point) => <li key={point}>{point}</li>)}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
+                </h3>
+                <dl className={`gap-6 px-5 pb-6 text-sm leading-6 sm:px-6 md:grid-cols-3 ${open ? "grid" : "hidden print:grid"}`}>
+                  <AdrTerm label="Context" value={adr.context} />
+                  <AdrTerm label="Decision" value={adr.decision} />
+                  <AdrTerm label="Trade-off" value={adr.tradeoff} />
+                </dl>
               </article>
-            ))}
-          </div>
-        </section>
+            );
+          })}
+        </div>
+      </Section>
 
-        <footer id="contact" className="reveal mt-16 border-t border-[var(--line)] py-12">
-          <h2 className="text-3xl font-black text-slate-100">Have a system that needs designing?</h2>
-          <div className="mt-6 flex flex-wrap gap-4 font-mono text-sm font-bold text-[var(--muted)]">
-            <a className="focus-orange hover:text-slate-100" href="mailto:lehakoe.thinane@gmail.com">lehakoe.thinane@gmail.com</a>
-            <a className="focus-orange hover:text-slate-100" href="tel:+27812439693">+27 81 243 9693</a>
-            <a className="focus-orange hover:text-slate-100" href="https://github.com/LehakoeThinane">GitHub</a>
-            <a className="focus-orange hover:text-slate-100" href="https://linkedin.com/in/lehakoe-stanley-thinane-38b854188">LinkedIn</a>
+      <Section index="06" label="Process" title="From first conversation to release" intro="The path every embedded project follows." wide className="no-print">
+        <ol className="grid gap-px overflow-hidden rounded-[14px] border border-[var(--border)] bg-[var(--border)] sm:grid-cols-2 lg:grid-cols-5">
+          {processSteps.map((step, index) => (
+            <li key={step.title} className="bg-[var(--bg)] p-5 sm:p-6">
+              <p className="font-mono text-xs text-[var(--accent)]">0{index + 1}</p>
+              <p className="mt-6 font-semibold text-[var(--text)]">{step.title}</p>
+              <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{step.text}</p>
+            </li>
+          ))}
+        </ol>
+      </Section>
+
+      <Section id="experience" index="07" label="Experience" title="Where I've done it" intro="Ten years across agencies, groups and embedded client work, with measured results along the way.">
+        <dl className="grid gap-px overflow-hidden rounded-[14px] border border-[var(--border)] bg-[var(--border)] sm:grid-cols-3 print:grid-cols-3">
+          {measuredResults.map((result) => (
+            <div key={result.value} className="flex flex-col gap-2 bg-[var(--bg)] p-5 sm:p-6">
+              <dt className="order-2 text-sm leading-6 text-[var(--muted)]">{result.label}</dt>
+              <dd className="order-1 text-3xl font-semibold tracking-tight tabular-nums text-[var(--text)]">{result.value}</dd>
+            </div>
+          ))}
+        </dl>
+        <ol className="mt-10">
+          {experience.map((entry) => (
+            <li key={entry.org} className="grid gap-2 border-t border-[var(--border)] py-7 first:border-t-0 first:pt-0 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-8">
+              <p className="pt-1 font-mono text-xs text-[var(--dim)]">{entry.period}</p>
+              <div>
+                <h3 className="text-lg font-semibold text-[var(--text)]">{entry.org}</h3>
+                <p className="mt-0.5 text-sm text-[var(--accent)]">{entry.role}</p>
+                <ul className="mt-4 list-disc space-y-2 pl-5 text-[15px] leading-7 text-[var(--muted)] marker:text-[var(--dim)]">
+                  {entry.points.map((point) => <li key={point}><Highlight text={point} /></li>)}
+                </ul>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </Section>
+
+      <Section id="cv" index="08" label="Role match" title="Paste a job description" intro="You get an honest coverage score, the requirement line each match came from, and the gaps I can't back up. No AI guesswork: it only credits what this page can prove." wide className="no-print">
+        <CvMatcher />
+      </Section>
+
+      <footer id="contact" className="border-t border-[var(--border)]">
+        <div className={`${shell} grid gap-12 py-20 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:items-end lg:py-28 print:py-6`}>
+          <div>
+            <p className="eyebrow no-print">09 / Contact</p>
+            <h2 className="mt-4 text-4xl font-semibold tracking-[-0.03em] text-[var(--text)] sm:text-5xl">Have a system that needs designing?</h2>
+            <p className="mt-5 max-w-xl text-[17px] leading-8 text-[var(--muted)]">
+              I work best embedded with a team: close to the people who feel the problem, and accountable for the system after launch.
+            </p>
+            <div className="no-print mt-8 flex flex-wrap gap-3">
+              <a className="btn-primary focus-ring" href="mailto:lehakoe.thinane@gmail.com">Email me</a>
+              <button type="button" className="btn-secondary focus-ring" onClick={() => window.print()}>Download CV</button>
+            </div>
           </div>
-        </footer>
-      </div>
+          <dl className="card divide-y divide-[var(--border)] text-sm">
+            {[
+              { label: "Email", value: "lehakoe.thinane@gmail.com", href: "mailto:lehakoe.thinane@gmail.com" },
+              { label: "Phone", value: "+27 81 243 9693", href: "tel:+27812439693" },
+              { label: "GitHub", value: "LehakoeThinane", href: "https://github.com/LehakoeThinane" },
+              { label: "LinkedIn", value: "lehakoe-stanley-thinane", href: "https://linkedin.com/in/lehakoe-stanley-thinane-38b854188" },
+              { label: "Based", value: "Johannesburg, South Africa" },
+            ].map((row) => (
+              <div key={row.label} className="grid grid-cols-[6rem_minmax(0,1fr)] gap-4 px-5 py-4">
+                <dt className="text-[var(--dim)]">{row.label}</dt>
+                <dd className="truncate text-[var(--text)]">
+                  {row.href ? <a className="focus-ring rounded hover:text-[var(--accent)]" href={row.href}>{row.value}</a> : row.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+        <div className="no-print border-t border-[var(--border)]">
+          <div className={`${shell} flex flex-wrap items-center justify-between gap-3 py-6 text-xs text-[var(--dim)]`}>
+            <p suppressHydrationWarning>© {new Date().getFullYear()} Lehakoe Thinane</p>
+            <p className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--green)]" />
+              All systems operational
+            </p>
+          </div>
+        </div>
+      </footer>
     </main>
   );
 }
 
-function ArchitectureDiagram({ selected, selectedNode, onSelect }: { selected: (typeof diagramNodes)[number]; selectedNode: string; onSelect: (id: string) => void }) {
-  const [eventStage, setEventStage] = useState(0);
-  const [glowIndex, setGlowIndex] = useState(0);
-  const glowNode = diagramNodes[glowIndex % diagramNodes.length]?.id;
+function Section({ id, index, label, title, intro, wide = false, className = "", children }: { id?: string; index: string; label: string; title: string; intro?: string; wide?: boolean; className?: string; children: ReactNode }) {
+  return (
+    <section id={id} className={`border-t border-[var(--border)] py-20 lg:py-28 ${className}`}>
+      <div className={shell}>
+        <div className={wide ? "grid gap-10 lg:gap-12" : "grid gap-10 xl:grid-cols-[19rem_minmax(0,1fr)] xl:gap-16"}>
+          <div className={wide ? "grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-end lg:gap-16" : "xl:sticky xl:top-28 xl:self-start"}>
+            <div>
+              <p className="eyebrow no-print">{index} / {label}</p>
+              <h2 className="mt-4 text-3xl font-semibold tracking-[-0.025em] text-[var(--text)] sm:text-4xl">{title}</h2>
+            </div>
+            {intro ? <p className={`max-w-xl text-[15px] leading-7 text-[var(--muted)] ${wide ? "" : "mt-4"}`}>{intro}</p> : null}
+          </div>
+          <div className="min-w-0">{children}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function subscribeToClock(onChange: () => void) {
+  const timer = window.setInterval(onChange, 15_000);
+  return () => window.clearInterval(timer);
+}
+
+function johannesburgTime() {
+  return new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Africa/Johannesburg" }).format(new Date());
+}
+
+// Client-only snapshot, so the static HTML never carries a stale build-time clock.
+function useJohannesburgTime() {
+  return useSyncExternalStore(subscribeToClock, johannesburgTime, () => null);
+}
+
+function ProfileCard() {
+  const time = useJohannesburgTime();
+  const rows = [
+    { label: "Focus", value: "AI inside controlled boundaries" },
+    { label: "Current", value: "Tax Consulting SA · since 2024" },
+    { label: "Based", value: time ? `Johannesburg · ${time} local (UTC+2)` : "Johannesburg (UTC+2)" },
+    { label: "Open to", value: "Remote, hybrid, client-embedded" },
+  ];
+
+  return (
+    <aside className="card no-print overflow-hidden">
+      <div className="relative aspect-[4/3]">
+        <Image
+          src={portrait}
+          alt="Portrait of Lehakoe Thinane"
+          fill
+          sizes="(min-width: 1024px) 38vw, 100vw"
+          placeholder="blur"
+          loading="eager"
+          fetchPriority="high"
+          className="object-cover object-[50%_32%]"
+        />
+        <div className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-[#070c15] via-[#070c15]/70 to-transparent" />
+        <div className="absolute inset-x-5 bottom-4">
+          <p className="text-lg font-semibold text-white">Lehakoe Thinane</p>
+          <p className="text-sm text-white/75">Systems Designer & Architect</p>
+        </div>
+      </div>
+      <dl className="divide-y divide-[var(--border)] text-sm">
+        {rows.map((row) => (
+          <div key={row.label} className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-4 px-5 py-3">
+            <dt className="text-[var(--dim)]">{row.label}</dt>
+            <dd className="text-[var(--text)]">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </aside>
+  );
+}
+
+function RotatingRole() {
+  const [index, setIndex] = useState(0);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setEventStage((current) => (current + 1) % eventStages.length);
-    }, 1400);
-
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setGlowIndex((current) => (current + 1) % diagramNodes.length);
-    }, 900);
-
+      if (!prefersReducedMotion()) setIndex((current) => (current + 1) % heroRoles.length);
+    }, 2600);
     return () => window.clearInterval(timer);
   }, []);
 
   return (
-    <section id="hld" className="mt-5 overflow-hidden rounded-[20px] border border-[var(--line)] bg-[#0d2238]/90 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
-      <div className="flex flex-col gap-2 border-b border-[var(--line)] px-4 py-3 font-mono text-xs font-bold text-[var(--muted)] md:flex-row md:items-center md:justify-between">
-        <p>FIG. 1 — High-level design of BiznizFlowPilot, a live multi-tenant ERP</p>
-        <p>Solid: request · Orange: event flow</p>
+    <>
+      <span className="sr-only">{heroRoles.join(", ")}</span>
+      <span aria-hidden="true">
+        <span key={index} className="role-swap inline-block">{heroRoles[index]}</span>
+        <span className="caret ml-0.5 text-[var(--accent)]">▍</span>
+      </span>
+    </>
+  );
+}
+
+function Highlight({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(\*\*[^*]+\*\*)/).map((part, index) =>
+        part.startsWith("**") ? (
+          <strong key={index} className="font-semibold text-[var(--text)]">{part.slice(2, -2)}</strong>
+        ) : (
+          <Fragment key={index}>{part}</Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
+type DiagramNode = (typeof diagramNodes)[number];
+type DiagramProps = { selected: DiagramNode; selectedNode: string; onSelect: (id: string) => void };
+
+const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
+
+function subscribeToReducedMotion(onChange: () => void) {
+  const media = window.matchMedia(reducedMotionQuery);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+// Server snapshot is "reduced", so animated packets only ever appear after hydration.
+function useReducedMotion() {
+  return useSyncExternalStore(subscribeToReducedMotion, () => window.matchMedia(reducedMotionQuery).matches, () => true);
+}
+
+function ArchitectureDiagram({ selected, selectedNode, onSelect }: DiagramProps) {
+  const [eventStage, setEventStage] = useState(0);
+  const [zoomed, setZoomed] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!prefersReducedMotion()) setEventStage((current) => (current + 1) % eventStages.length);
+    }, 1800);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  function openZoom() {
+    setZoomed(true);
+    dialogRef.current?.showModal();
+  }
+
+  return (
+    <div className="diagram-shell">
+      <div className="relative overflow-hidden rounded-[19px] bg-[#060b14]">
+        <div aria-hidden="true" className="diagram-blob left-[-8%] top-[-20%] h-[26rem] w-[26rem] bg-[#ff8a4c]/30" />
+        <div aria-hidden="true" className="diagram-blob bottom-[-25%] right-[-6%] h-[30rem] w-[30rem] bg-[#3b82f6]/25 [animation-delay:-9s]" />
+        <div aria-hidden="true" className="diagram-blob left-[40%] top-[30%] h-[18rem] w-[18rem] bg-[#a78bfa]/15 [animation-delay:-4s]" />
+
+        <div className="relative">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.07] bg-white/[0.02] px-5 py-4 backdrop-blur-md sm:px-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="inline-flex items-center gap-2 rounded-full border border-[var(--green)]/30 bg-[var(--green)]/10 px-2.5 py-1 text-[11px] font-medium text-[var(--green)]">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--green)] opacity-70" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--green)]" />
+                </span>
+                Live in production
+              </span>
+              <p className="font-mono text-xs text-[var(--muted)]">FIG. 1 · BiznizFlowPilot control plane</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              {(Object.keys(edgeColor) as EdgeKind[]).map((kind) => (
+                <span key={kind} className="flex items-center gap-2 text-xs capitalize text-[var(--dim)]">
+                  <span className="h-0.5 w-4 rounded-full" style={{ background: edgeColor[kind], boxShadow: `0 0 8px ${edgeColor[kind]}` }} />
+                  {kind}
+                </span>
+              ))}
+              <button type="button" className="glass-button focus-ring" onClick={openZoom}>⤢ Expand</button>
+            </div>
+          </div>
+
+          <div className="grid gap-5 p-3 sm:p-5 lg:grid-cols-[minmax(0,1fr)_21rem] lg:p-6">
+            <div className="min-w-0">
+              <button type="button" className="block w-full cursor-zoom-in md:hidden" onClick={openZoom} aria-label="Expand the architecture diagram">
+                <DiagramSvg selectedNode={selectedNode} />
+              </button>
+              <div className="hidden md:block">
+                <DiagramSvg selectedNode={selectedNode} onSelect={onSelect} />
+              </div>
+              <p className="mt-3 hidden px-1 font-mono text-[11px] text-[var(--dim)] md:block">Click a component, or tab to it and press Enter. Its connections light up.</p>
+            <div className="glass-card mt-5 p-5">
+              <p className="eyebrow">Event flow</p>
+              <ol className="mt-4 grid gap-5 md:grid-cols-3">
+                {eventStages.map((stage, index) => {
+                  const active = eventStage === index;
+                  return (
+                    <li key={stage} className="flex gap-3">
+                      <span
+                        className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border font-mono text-[11px] transition-all duration-300 ${
+                          active ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] shadow-[0_0_16px_rgba(255,138,76,0.7)]" : "border-white/15 text-[var(--dim)]"
+                        }`}
+                      >
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-sm leading-6 transition-colors duration-300 ${active ? "text-[var(--text)]" : "text-[var(--dim)]"}`}>{stage}</p>
+                        <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-white/[0.06]">
+                          {active ? <span key={`${index}-${eventStage}`} className="stage-progress block h-full rounded-full bg-[var(--accent)]" /> : null}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+            </div>
+
+            <aside className="grid content-start gap-4">
+              <NodeDetails selected={selected} onSelect={onSelect} />
+            </aside>
+          </div>
+        </div>
       </div>
-      <div className="grid gap-3 px-4 py-3 font-mono text-xs font-bold text-[var(--muted)] md:grid-cols-[1fr_1.15fr] md:items-center">
-        <p className="leading-5">{selected.text}</p>
-        <div className="grid gap-2 sm:grid-cols-3">
-          {eventStages.map((stage, index) => (
-            <span
-              key={stage}
-              className={`rounded-full border px-3 py-2 leading-4 transition-all duration-300 ${
-                eventStage === index
-                  ? "border-[var(--accent)] bg-[var(--accent)]/12 text-[var(--accent)] shadow-[0_0_18px_rgba(255,138,76,0.18)]"
-                  : "border-[var(--line)] text-[var(--dim)]"
-              }`}
+
+      <dialog
+        ref={dialogRef}
+        aria-label="Architecture diagram, expanded"
+        className="m-auto max-h-[94vh] w-[min(96vw,84rem)] flex-col overflow-hidden rounded-[20px] border border-white/10 bg-[#070c15]/95 p-0 text-[var(--text)] shadow-[0_40px_120px_-30px_rgba(255,138,76,0.35)] backdrop:bg-black/75 backdrop:backdrop-blur-md open:flex"
+        onClose={() => setZoomed(false)}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) event.currentTarget.close();
+        }}
+      >
+        <div className="flex items-center justify-between gap-4 border-b border-white/[0.07] px-5 py-3">
+          <p className="font-mono text-xs text-[var(--muted)]">FIG. 1 · expanded<span className="md:hidden"> · scroll sideways</span></p>
+          <button type="button" className="glass-button focus-ring" onClick={() => dialogRef.current?.close()}>Close ✕</button>
+        </div>
+        <div className="overflow-auto p-4">
+          {zoomed ? <DiagramSvg className="min-w-[56rem]" selectedNode={selectedNode} onSelect={onSelect} /> : null}
+        </div>
+        <div className="border-t border-white/[0.07] p-4">
+          <NodeDetails selected={selected} onSelect={onSelect} />
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function NodeDetails({ selected, onSelect }: { selected: DiagramNode; onSelect: (id: string) => void }) {
+  const connections = diagramEdges
+    .filter((edge) => edge.from === selected.id || edge.to === selected.id)
+    .map((edge) => {
+      const otherId = edge.from === selected.id ? edge.to : edge.from;
+      return { node: diagramNodes.find((node) => node.id === otherId)!, kind: edge.kind, outgoing: edge.from === selected.id };
+    });
+
+  return (
+    <div className="glass-card relative overflow-hidden p-5">
+      <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full opacity-40 blur-3xl transition-colors duration-500" style={{ background: selected.color }} />
+      <div key={selected.id} className="detail-swap relative">
+        <p className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--dim)]">
+          <span className="h-2 w-2 rounded-full" style={{ background: selected.color, boxShadow: `0 0 10px ${selected.color}` }} />
+          {selected.layer}
+        </p>
+        <p className="mt-3 text-xl font-semibold tracking-tight text-[var(--text)]">{selected.title}</p>
+        <p className="font-mono text-xs text-[var(--dim)]">{selected.sub}</p>
+        <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{selected.text}</p>
+        <div className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3.5">
+          <p className="text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: selected.color }}>Guarantee</p>
+          <p className="mt-1 text-sm leading-6 text-[var(--text)]">{selected.guarantee}</p>
+        </div>
+        <p className="eyebrow mt-5">Connected to</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {connections.map(({ node, kind, outgoing }) => (
+            <button
+              key={`${node.id}-${kind}`}
+              type="button"
+              className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs text-[var(--muted)] transition-colors hover:border-white/25 hover:text-[var(--text)]"
+              onClick={() => onSelect(node.id)}
             >
-              {stage}
-            </span>
+              <span style={{ color: edgeColor[kind] }}>{outgoing ? "→" : "←"}</span>
+              {node.title}
+            </button>
           ))}
         </div>
       </div>
-      <div className="overflow-hidden">
-        <svg className="block h-auto w-full" viewBox="0 0 1000 540" role="img" aria-label="High-level design of BiznizFlowPilot">
-          <defs>
-            <marker id="arrow" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4"><path d="M0,0 L8,4 L0,8 Z" fill="#8fa3bf" /></marker>
-          </defs>
-          <path d="M202 323 H220" stroke="#8fa3bf" strokeWidth="3" markerEnd="url(#arrow)" />
-          <path d="M386 323 H414" stroke="#8fa3bf" strokeWidth="3" markerEnd="url(#arrow)" />
-          <path d="M580 323 H622" stroke="#8fa3bf" strokeWidth="3" markerEnd="url(#arrow)" />
-          <path d="M788 323 H816" stroke="#8fa3bf" strokeWidth="3" markerEnd="url(#arrow)" />
-          <path d="M497 366 V426" stroke="#8fa3bf" strokeWidth="3" markerEnd="url(#arrow)" />
-          <path d="M705 366 V426" stroke="#8fa3bf" strokeWidth="3" markerEnd="url(#arrow)" />
-          <path d="M788 469 H816" stroke="#8fa3bf" strokeWidth="3" markerEnd="url(#arrow)" />
-          <path id="apiToOutbox" d="M497 280 V171 H622" stroke="#ff8a4c" strokeDasharray="7 10" strokeWidth="3" fill="none" />
-          <path id="outboxToWorkers" d="M788 171 H816" stroke="#ff8a4c" strokeDasharray="7 10" strokeWidth="3" fill="none" />
-          <path d="M614 163 L630 171 L614 179 Z" fill="#ff8a4c" />
-          <path d="M808 163 L824 171 L808 179 Z" fill="#ff8a4c" />
-          <circle cx="497" cy="280" r="5" fill="#ff8a4c" />
-          <circle cx="622" cy="171" r="5" fill="#ff8a4c" />
-          <circle cx="816" cy="171" r="5" fill="#ff8a4c" />
-          <circle r="5.5" fill="#ff8a4c">
-            <animateMotion dur="4.2s" repeatCount="indefinite" rotate="0">
-              <mpath href="#apiToOutbox" />
-            </animateMotion>
-          </circle>
-          <circle r="5.5" fill="#ff8a4c">
-            <animateMotion dur="4.2s" repeatCount="indefinite" begin="1.9s" rotate="0">
-              <mpath href="#outboxToWorkers" />
-            </animateMotion>
-          </circle>
-          <text x="534" y="160" fill="#8fa3bf" fontFamily="var(--font-geist-mono)" fontSize="12" fontWeight="800">events, same txn</text>
-          <text x="715" y="394" fill="#8fa3bf" fontFamily="var(--font-geist-mono)" fontSize="12" fontWeight="800">writes need approval</text>
-          {diagramNodes.map((node) => (
-            <g key={node.id} role="button" tabIndex={0} aria-label={`${node.title}: ${node.sub}`} onClick={() => onSelect(node.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelect(node.id); }} className="cursor-pointer outline-none">
-              <rect x={node.x} y={node.y} width={node.w} height={node.h} rx="12" fill={node.id === selectedNode ? "#49342b" : "#0b1b2c"} stroke={node.id === selectedNode ? "#ff8a4c" : glowNode === node.id ? "#ff8a4c" : "#8fa3bf"} strokeWidth={node.id === selectedNode || glowNode === node.id ? 3 : 2} strokeDasharray={node.dashed ? "8 7" : undefined} filter={node.id === selectedNode || glowNode === node.id ? "drop-shadow(0 0 14px rgba(255,138,76,.75))" : undefined} />
-              <text x={node.x + 14} y={node.y + 27} fill="#eef5ff" fontFamily="var(--font-geist-mono)" fontSize="15" fontWeight="900">{node.title}</text>
-              <text x={node.x + 14} y={node.y + 50} fill="#8fa3bf" fontFamily="var(--font-geist-mono)" fontSize="11" fontWeight="800">{node.sub}</text>
-              <text x={node.x + 14} y={node.y + 72} fill="#ff8a4c" fontFamily="var(--font-geist-mono)" fontSize="9.5" fontWeight="900">click me for more explanation</text>
+    </div>
+  );
+}
+
+// Without onSelect the diagram is a static picture (used as the tap target on phones).
+function DiagramSvg({ selectedNode, onSelect, className = "" }: { selectedNode: string; onSelect?: (id: string) => void; className?: string }) {
+  // Two copies can be on the page at once, so every referenced id must be unique.
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const reducedMotion = useReducedMotion();
+  const interactive = Boolean(onSelect);
+  const ids = { glow: `${uid}-glow`, blur: `${uid}-blur`, glass: `${uid}-glass`, grid: `${uid}-grid` };
+
+  return (
+    <svg className={`block h-auto w-full ${className}`} viewBox="16 104 984 432" role={interactive ? "group" : "img"} aria-label="High-level design of BiznizFlowPilot">
+      <defs>
+        <filter id={ids.glow} x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        <filter id={ids.blur} x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="9" />
+        </filter>
+        <linearGradient id={ids.glass} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#ffffff" stopOpacity="0.1" />
+          <stop offset="1" stopColor="#ffffff" stopOpacity="0.02" />
+        </linearGradient>
+        <pattern id={ids.grid} width="16" height="16" patternUnits="userSpaceOnUse">
+          <circle cx="1" cy="1" r="0.8" fill="#94aac8" fillOpacity="0.12" />
+        </pattern>
+        {(Object.keys(edgeColor) as EdgeKind[]).map((kind) => (
+          <marker key={kind} id={`${uid}-arrow-${kind}`} markerHeight="7" markerWidth="7" orient="auto" refX="6" refY="3.5">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill={edgeColor[kind]} />
+          </marker>
+        ))}
+      </defs>
+
+      <rect x="16" y="104" width="984" height="432" fill={`url(#${ids.grid})`} />
+
+      {diagramLanes.map((lane) => (
+        <g key={lane.label}>
+          <rect x="24" y={lane.y} width="968" height={lane.h} rx="14" fill="#94aac8" fillOpacity="0.025" stroke="#94aac8" strokeOpacity="0.07" />
+          <text x="40" y={lane.y + 17} fill="#5d6d83" fontFamily="var(--font-geist-mono)" fontSize="9.5" letterSpacing="1.4">{lane.label.toUpperCase()}</text>
+        </g>
+      ))}
+
+      {diagramEdges.map((edge, index) => {
+        const linked = edge.from === selectedNode || edge.to === selectedNode;
+        const color = edgeColor[edge.kind];
+        return (
+          <g key={edge.d} className="transition-opacity duration-300" opacity={linked ? 1 : 0.5}>
+            <path d={edge.d} pathLength={1} className="edge-draw" style={{ animationDelay: `${250 + index * 70}ms` }} stroke={color} strokeOpacity="0.3" strokeWidth={linked ? 2.5 : 1.5} fill="none" markerEnd={`url(#${uid}-arrow-${edge.kind})`} />
+            <path d={edge.d} className={`edge-flow edge-flow-${edge.kind}`} stroke={color} strokeWidth={linked ? 2.5 : 1.5} strokeLinecap="round" fill="none" filter={linked ? `url(#${ids.glow})` : undefined} />
+          </g>
+        );
+      })}
+
+      {reducedMotion
+        ? null
+        : packetRoutes.map((route) => (
+            <g key={route.d} filter={`url(#${ids.glow})`}>
+              <circle r="9" fill={route.color} fillOpacity="0.18" />
+              <circle r="3.5" fill={route.color} />
+              <animateMotion dur={route.dur} begin={route.begin} repeatCount="indefinite" path={route.d} />
             </g>
           ))}
-        </svg>
-      </div>
-    </section>
+
+      <text x="510" y="226" fill="#8696ab" fontFamily="var(--font-geist-mono)" fontSize="10.5">event + change,</text>
+      <text x="510" y="241" fill="#8696ab" fontFamily="var(--font-geist-mono)" fontSize="10.5">one transaction</text>
+      <text x="715" y="398" fill="#8696ab" fontFamily="var(--font-geist-mono)" fontSize="10.5">writes need approval</text>
+
+      {diagramNodes.map((node, index) => {
+        const isSelected = node.id === selectedNode;
+        return (
+          <g
+            key={node.id}
+            role={interactive ? "button" : undefined}
+            tabIndex={interactive ? 0 : undefined}
+            aria-label={interactive ? `${node.title}: ${node.sub}` : undefined}
+            aria-pressed={interactive ? isSelected : undefined}
+            onClick={onSelect ? () => onSelect(node.id) : undefined}
+            onKeyDown={onSelect ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(node.id); } } : undefined}
+            className={`node-enter ${interactive ? "diagram-node cursor-pointer outline-none" : ""}`}
+            style={{ animationDelay: `${index * 60}ms` }}
+          >
+            {isSelected ? <rect className="node-glow" x={node.x} y={node.y} width={node.w} height={node.h} rx="14" fill="none" stroke={node.color} strokeWidth="10" filter={`url(#${ids.blur})`} /> : null}
+            <rect x={node.x} y={node.y} width={node.w} height={node.h} rx="14" fill="#0a111e" fillOpacity="0.78" />
+            <rect
+              className="node-body"
+              x={node.x}
+              y={node.y}
+              width={node.w}
+              height={node.h}
+              rx="14"
+              fill={`url(#${ids.glass})`}
+              stroke={isSelected ? node.color : "#94aac8"}
+              strokeOpacity={isSelected ? 1 : 0.22}
+              strokeWidth={isSelected ? 1.75 : 1}
+              strokeDasharray={node.dashed ? "6 5" : undefined}
+            />
+            {isSelected ? <rect x={node.x} y={node.y} width={node.w} height={node.h} rx="14" fill={node.color} fillOpacity="0.08" /> : null}
+            <path d={`M${node.x + 14} ${node.y + 0.75} H${node.x + node.w - 14}`} stroke="#ffffff" strokeOpacity="0.16" />
+            <circle cx={node.x + 19} cy={node.y + 21} r="3.5" fill={node.color} filter={isSelected ? `url(#${ids.glow})` : undefined} />
+            <text x={node.x + 29} y={node.y + 24.5} fill="#74849a" fontFamily="var(--font-geist-mono)" fontSize="9.5" letterSpacing="1.2">{node.layer.toUpperCase()}</text>
+            <text x={node.x + 15} y={node.y + 52} fill="#eef4fb" fontFamily="var(--font-geist-sans)" fontSize="15.5" fontWeight="600">{node.title}</text>
+            <text x={node.x + 15} y={node.y + 71} fill="#8696ab" fontFamily="var(--font-geist-mono)" fontSize="10.5">{node.sub}</text>
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 
-function LiveDemo({ role, setRole, request, setRequest, lines, audit }: { role: string; setRole: (role: string) => void; request: string; setRequest: (request: string) => void; lines: string[]; audit: string[] }) {
+function LiveDemo({ role, request, onRun, lines, audit }: { role: string; request: string; onRun: (role: string, request: string) => void; lines: string[]; audit: string[] }) {
   return (
-    <section id="demo" className="reveal mt-10">
-      <SectionTitle eyebrow="Live demo: AI with boundaries" title="Every action is checked, logged and gated" copy="A simulated version of the assistant inside BiznizFlowPilot. Pick who is asking, then pick a request. Every action is checked, logged and gated." />
-      <div className="panel mt-6 grid gap-4 rounded-[20px] p-5 lg:grid-cols-[0.9fr_1.1fr]">
-        <div>
-          <p className="font-mono text-sm font-bold text-[var(--muted)]">Asking as</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {roles.map((item) => <button key={item} type="button" className={`focus-orange rounded-full px-4 py-2 font-mono text-sm font-bold ${role === item ? "bg-[var(--accent)] text-[var(--accent-dark)]" : "border border-[var(--line)] text-[var(--muted)]"}`} onClick={() => setRole(item)}>{item}</button>)}
-          </div>
-          <p className="mt-6 font-mono text-sm font-bold text-[var(--muted)]">Request</p>
-          <div className="mt-3 grid gap-2">
-            {requests.map((item) => <button key={item} type="button" className={`focus-orange rounded-2xl border px-4 py-3 text-left text-sm font-bold ${request === item ? "border-[var(--accent)] text-slate-100" : "border-[var(--line)] text-[var(--muted)]"}`} onClick={() => setRequest(item)}>{item}</button>)}
-          </div>
+    <div className="card grid overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      <div className="p-5 sm:p-6 lg:border-r lg:border-[var(--border)]">
+        <p className="eyebrow">Asking as</p>
+        <div className="mt-3 inline-flex rounded-lg border border-[var(--border)] p-1" role="group" aria-label="Role">
+          {roles.map((item) => (
+            <button
+              key={item}
+              type="button"
+              aria-pressed={role === item}
+              className={`focus-ring rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors ${role === item ? "bg-[var(--surface-strong)] text-[var(--text)]" : "text-[var(--muted)] hover:text-[var(--text)]"}`}
+              onClick={() => onRun(item, request)}
+            >
+              {item}
+            </button>
+          ))}
         </div>
-        <div className="rounded-2xl border border-[var(--line)] bg-[#071421] p-4">
-          <p className="font-mono text-sm font-bold text-[var(--muted)]">Assistant output</p>
-          <div className="mt-4 min-h-40 space-y-2 font-mono text-sm leading-6 text-slate-300">
-            {lines.length ? lines.map((line) => <p key={line} className={line.includes("blocked") ? "text-[var(--red)]" : line.includes("approval") ? "text-[var(--accent)]" : "text-[var(--green)]"}>{line}</p>) : <p className="text-[var(--muted)]">Pick a request to watch the assistant work. Then switch role and see what changes.</p>}
-          </div>
-          <p className="mt-6 font-mono text-sm font-bold text-slate-100">Audit trail</p>
-          <ol className="mt-3 list-decimal space-y-2 pl-5 font-mono text-xs leading-5 text-[var(--muted)]">
+        <p className="mt-2 text-xs text-[var(--dim)]">Scope: {roleScope[role]}</p>
+        <p className="eyebrow mt-8">Request</p>
+        <div className="mt-3 grid gap-2">
+          {requests.map((item) => {
+            const isWrite = item.startsWith("Send") || item.startsWith("Update");
+            return (
+              <button
+                key={item}
+                type="button"
+                aria-pressed={request === item}
+                className={`focus-ring flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-left text-sm transition-colors ${
+                  request === item ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]" : "border-[var(--border)] text-[var(--muted)] hover:border-[var(--border-strong)] hover:text-[var(--text)]"
+                }`}
+                onClick={() => onRun(role, item)}
+              >
+                {item}
+                <span className="shrink-0 font-mono text-[11px] text-[var(--dim)]">{isWrite ? "write" : "read"}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="border-t border-[var(--border)] bg-[var(--bg)] p-5 font-mono text-[13px] sm:p-6 lg:border-t-0">
+        <p className="eyebrow">Assistant output</p>
+        <div className="mt-4 min-h-[9.5rem] space-y-2 leading-6" aria-live="polite">
+          {lines.length ? (
+            lines.map((line) => {
+              const tone = line.includes("blocked") || line.includes("denied") ? "block" : line.includes("approval") ? "approve" : "allow";
+              return (
+                <p key={line} className="flex gap-3">
+                  <span aria-hidden="true" className={tone === "block" ? "text-[var(--red)]" : tone === "approve" ? "text-[var(--accent)]" : "text-[var(--green)]"}>
+                    {tone === "block" ? "✕" : tone === "approve" ? "◐" : "✓"}
+                  </span>
+                  <span className="text-[var(--text)]">{line}</span>
+                </p>
+              );
+            })
+          ) : (
+            <p className="text-[var(--dim)]">Pick a request to watch the assistant work.</p>
+          )}
+        </div>
+        <p className="eyebrow mt-8 border-t border-[var(--border)] pt-5">Audit trail · append-only</p>
+        {audit.length ? (
+          <ol className="mt-3 space-y-1.5 text-xs leading-5 text-[var(--muted)]">
             {audit.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
           </ol>
-        </div>
+        ) : (
+          <p className="mt-3 text-xs text-[var(--dim)]">Nothing logged yet.</p>
+        )}
       </div>
-    </section>
+    </div>
   );
 }
 
-function ComponentsTable() {
+function SystemCard({ system }: { system: (typeof systems)[number] }) {
   return (
-    <section id="systems" className="reveal mt-16">
-      <SectionTitle eyebrow="Components" title="Systems I have designed and built" copy="Each one is a different answer to the same question: where do the boundaries go?" />
-      <div className="panel mt-6 hidden overflow-hidden rounded-[20px] md:block">
-        <table className="w-full border-collapse text-left text-sm">
-          <thead className="font-mono text-xs uppercase tracking-[0.08em] text-[var(--muted)]">
-            <tr>{["Component", "Purpose", "Boundary I designed", "Stack"].map((head) => <th key={head} className="border-b border-[var(--line)] px-4 py-4">{head}</th>)}</tr>
-          </thead>
-          <tbody className="text-[var(--muted)]">
-            {systems.map((system) => (
-              <tr key={system.component} className="border-b border-[var(--line)] last:border-b-0">
-                <td className="px-4 py-5 align-top"><a className="focus-orange font-bold text-slate-100 hover:text-[var(--accent)]" href={system.link}>{system.component}</a><span className="mt-2 block w-fit rounded-full bg-[var(--accent)]/15 px-2 py-1 font-mono text-xs font-bold text-[var(--accent)]">{system.status}</span></td>
-                <td className="px-4 py-5 align-top leading-6">{system.purpose}</td>
-                <td className="px-4 py-5 align-top leading-6">{system.boundary}</td>
-                <td className="px-4 py-5 align-top font-mono text-xs leading-6">{system.stack}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <article className="card grid gap-5 p-5 sm:p-6 md:grid-cols-[13rem_minmax(0,1fr)] md:gap-8">
+      <div>
+        <div className="flex items-center gap-3">
+          <h3 className="text-lg font-semibold text-[var(--text)]">{system.component}</h3>
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium ${system.status === "Live" ? "border-[var(--green)]/40 text-[var(--green)]" : "border-[var(--border-strong)] text-[var(--muted)]"}`}>
+            {system.status === "Live" ? <span className="h-1.5 w-1.5 rounded-full bg-[var(--green)]" /> : null}
+            {system.status}
+          </span>
+        </div>
+        <a className="focus-ring mt-2 inline-block rounded text-sm text-[var(--muted)] hover:text-[var(--accent)]" href={system.link} target="_blank" rel="noopener noreferrer">{system.linkLabel} ↗</a>
+        <ul className="mt-4 flex flex-wrap gap-1.5">
+          {system.stack.map((item) => <li key={item} className="rounded-md border border-[var(--border)] px-2 py-0.5 font-mono text-[11px] text-[var(--muted)]">{item}</li>)}
+        </ul>
       </div>
-      <div className="mt-6 grid gap-3 md:hidden">
-        {systems.map((system) => <article key={system.component} className="panel rounded-[20px] p-5"><h3 className="text-lg font-bold text-slate-100">{system.component}</h3><p className="mt-2 text-sm leading-6 text-[var(--muted)]">{system.purpose}</p><p className="mt-3 font-mono text-xs text-[var(--accent)]">{system.stack}</p></article>)}
+      <div className="grid gap-4 text-[15px] leading-7">
+        <p className="text-[var(--text)]">{system.purpose}</p>
+        <div className="border-l-2 border-[var(--accent)] pl-4">
+          <p className="eyebrow">Boundary I designed</p>
+          <p className="mt-1 text-[var(--muted)]">{system.boundary}</p>
+        </div>
+        <p className="text-sm leading-6 text-[var(--dim)]">{system.note}</p>
       </div>
-    </section>
+    </article>
   );
 }
 
-function SectionTitle({ eyebrow, title, copy }: { eyebrow: string; title: string; copy?: string }) {
-  return <div className="max-w-2xl"><p className="font-mono text-sm font-bold uppercase tracking-[0.18em] text-[var(--accent)]">{eyebrow}</p><h2 className="mt-3 text-3xl font-black text-slate-100 md:text-4xl">{title}</h2>{copy ? <p className="mt-3 leading-7 text-[var(--muted)]">{copy}</p> : null}</div>;
+function SideProjects() {
+  const [filter, setFilter] = useState<ProjectCategory | "All">("All");
+  const visible = filter === "All" ? sideProjects : sideProjects.filter((project) => project.category === filter);
+
+  return (
+    <div>
+      <div className="no-print flex flex-wrap gap-2" role="group" aria-label="Filter projects">
+        {(["All", ...projectCategories] as const).map((category) => {
+          const count = category === "All" ? sideProjects.length : sideProjects.filter((project) => project.category === category).length;
+          const active = filter === category;
+          return (
+            <button
+              key={category}
+              type="button"
+              aria-pressed={active}
+              className={`focus-ring inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+                active ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]" : "border-[var(--border)] text-[var(--muted)] hover:border-[var(--border-strong)] hover:text-[var(--text)]"
+              }`}
+              onClick={() => setFilter(category)}
+            >
+              {category}
+              <span className="font-mono text-[11px] text-[var(--dim)]">{count}</span>
+            </button>
+          );
+        })}
+      </div>
+      <ul className="mt-6 grid gap-4 md:grid-cols-2 print:grid-cols-1">
+        {visible.map((project) => (
+          <li key={project.name} className="project-card card flex flex-col p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--dim)]">{project.category}</p>
+                <h3 className="mt-1.5 text-lg font-semibold text-[var(--text)]">{project.name}</h3>
+              </div>
+              <span className="shrink-0 rounded-full border border-[var(--border-strong)] px-2 py-0.5 text-[11px] font-medium text-[var(--muted)]">{project.status}</span>
+            </div>
+            <p className="mt-3 text-[15px] leading-7 text-[var(--muted)]">{project.summary}</p>
+            <div className="mt-4 border-l-2 border-[var(--accent)] pl-4">
+              <p className="eyebrow">Boundary</p>
+              <p className="mt-1 text-sm leading-6 text-[var(--text)]">{project.boundary}</p>
+            </div>
+            <div className="mt-auto pt-5">
+              <ul className="flex flex-wrap gap-1.5">
+                {project.stack.map((item) => <li key={item} className="rounded-md border border-[var(--border)] px-2 py-0.5 font-mono text-[11px] text-[var(--muted)]">{item}</li>)}
+              </ul>
+              <div className="no-print mt-4 flex flex-wrap gap-4 border-t border-[var(--border)] pt-4">
+                {project.repos.map((repo) => (
+                  <a key={repo.href} className="focus-ring rounded text-sm font-medium text-[var(--text)] transition-colors hover:text-[var(--accent)]" href={repo.href} target="_blank" rel="noopener noreferrer">
+                    {repo.label} ↗
+                  </a>
+                ))}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function StackFile() {
+  return (
+    <div className="card overflow-hidden">
+      <div className="no-print flex items-center gap-2 border-b border-[var(--border)] px-5 py-3">
+        <span className="font-mono text-xs text-[var(--muted)]">stack.yaml</span>
+      </div>
+      <pre className="overflow-x-auto px-5 py-5 font-mono text-[13px] leading-7 sm:px-6">
+        {stackFile.map((row) => (
+          <div key={row.key} className="whitespace-pre-wrap">
+            <span className="text-[var(--accent)]">{row.key}</span>
+            <span className="text-[var(--dim)]">:{" ".repeat(11 - row.key.length)}[</span>
+            {row.values.map((value, index) => (
+              <Fragment key={value}>
+                <span className="text-[var(--text)]">{value}</span>
+                {index < row.values.length - 1 ? <span className="text-[var(--dim)]">, </span> : null}
+              </Fragment>
+            ))}
+            <span className="text-[var(--dim)]">]</span>
+          </div>
+        ))}
+      </pre>
+    </div>
+  );
 }
 
 function AdrTerm({ label, value }: { label: string; value: string }) {
-  return <div><dt className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-[var(--accent)]">{label}</dt><dd className="mt-2 text-[var(--muted)]">{value}</dd></div>;
+  return (
+    <div>
+      <dt className="eyebrow">{label}</dt>
+      <dd className="mt-2 text-[var(--muted)]">{value}</dd>
+    </div>
+  );
 }
+
+type Decision = "allow" | "approve" | "block";
+
+// Rows follow `requests`, columns follow `roles`: Owner, Sales rep, Intern.
+const policy: Decision[][] = [
+  ["allow", "allow", "allow"],
+  ["allow", "block", "block"],
+  ["approve", "approve", "block"],
+  ["approve", "block", "block"],
+  ["allow", "allow", "allow"],
+];
+
+const roleScope: Record<string, string> = {
+  Owner: "whole business",
+  "Sales rep": "own customer accounts",
+  Intern: "read-only, amounts masked",
+};
 
 function buildScenario(role: string, request: string) {
-  const denied = role === "Intern" && request.includes("payroll");
-  const approval = request.includes("Send") || request.includes("Update");
+  const decision = policy[requests.indexOf(request)]?.[roles.indexOf(role)] ?? "block";
+  const isWrite = request.startsWith("Send") || request.startsWith("Update");
   return [
-    `permission check: ${denied ? "blocked" : "allowed"} for ${role}`,
-    "tenant scope: current business only",
-    denied ? "query blocked: payroll data is outside this role" : "query: repository layer with audited access",
-    approval ? "human approval required before live write" : denied ? "result: denied and logged" : "result: safe read returned",
+    `permission check: ${decision === "block" ? "blocked" : "allowed"} for ${role}`,
+    `tenant scope: current business · ${roleScope[role]}`,
+    decision === "block"
+      ? `query blocked: ${isWrite ? "live writes are" : "this data is"} outside the ${role} role`
+      : isWrite ? "draft prepared with audited access, nothing sent yet" : "query: repository layer with audited access",
+    decision === "approve" ? "human approval required before live write" : decision === "block" ? "result: denied and logged" : "result: safe read returned",
   ];
-}
-
-function scoreJob(text: string) {
-  const lower = text.toLowerCase();
-  const terms = ["ai", "automation", "architecture", "system", "systems", "erp", "fastapi", ".net", "azure", "aws", "postgresql", "next.js", "wordpress", "crm", "security"];
-  const hits = terms.filter((term) => lower.includes(term));
-  const score = Math.min(96, Math.max(42, 48 + hits.length * 4));
-  const evidence = [
-    "Technical owner across 8+ business units at Tax Consulting South Africa.",
-    "BiznizFlowPilot: FastAPI, PostgreSQL, Celery, Next.js with tenant isolation enforced in CI.",
-    "AI Growth Platform: schema-validated tool calls, step limits and server re-checks.",
-  ];
-  const gaps = hits.includes("mobile") ? ["The content does not show native mobile app delivery."] : ["Role-specific domain depth would need confirmation from the job description."];
-  return { score, evidence, gaps };
 }

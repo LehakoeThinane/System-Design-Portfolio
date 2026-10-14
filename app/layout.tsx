@@ -13,14 +13,30 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://leonard-thinane.vercel.app"),
+  alternates: { canonical: "/" },
   title: "Lehakoe Thinane - Systems Designer & Architect",
   description:
     "Systems designer, architect and AI engineer focused on controlled AI, ERP, automation and business systems.",
+  authors: [{ name: "Lehakoe Thinane" }],
+  keywords: [
+    "systems architect",
+    "solutions architect",
+    "AI engineer",
+    "LLM guardrails",
+    "multi-tenant ERP",
+    "business automation",
+    "FastAPI",
+    ".NET",
+    "Johannesburg",
+    "South Africa",
+  ],
   openGraph: {
     title: "Lehakoe Thinane - Systems Designer & Architect",
     description:
       "Portfolio for Lehakoe Thinane, systems designer and architect building AI inside controlled boundaries.",
     type: "website",
+    url: "/",
   },
 };
 
